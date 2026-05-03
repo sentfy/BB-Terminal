@@ -12,11 +12,27 @@ const BUTTONS: Btn[] = [
   { code: "FA",     label: "Financials" },
   { code: "OMON",   label: "Options" },
   { code: "NI",     label: "News" },
+  { code: "WL",     label: "Watch" },
+  { code: "PORT",   label: "Folio" },
+  { code: "COMP",   label: "Compare" },
   { code: "MOV",    label: "Movers" },
+  { code: "SMAP",   label: "Sectors" },
+  { code: "ETF",    label: "ETF" },
+  { code: "CMDTY",  label: "Cmdty" },
   { code: "WEI",    label: "Global" },
   { code: "CRYPTO", label: "Crypto" },
   { code: "FXC",    label: "FX" },
   { code: "CURV",   label: "Yields" },
+  { code: "WX",     label: "Weather" },
+  { code: "ECAL",   label: "Earnings" },
+  { code: "IPO",    label: "IPOs" },
+  { code: "SCR",    label: "Screen" },
+  { code: "SI",     label: "Short" },
+  { code: "ECON",   label: "Econ" },
+  { code: "INSD",   label: "Insider" },
+  { code: "HCAL",   label: "Holidays" },
+  { code: "ALRT",   label: "Alerts" },
+  { code: "KEYS",   label: "APIs" },
   { code: "HELP",   label: "Help" },
 ];
 
@@ -25,7 +41,7 @@ export function QuickBar() {
   const activeCode = tabs.find((t) => t.id === activeTabId)?.code;
 
   return (
-    <div className="flex items-stretch h-9 bg-term-bg2 border-b border-term-border overflow-x-auto scroll-thin">
+    <div className="flex items-stretch h-9 bg-term-bg2 border-b border-term-border overflow-x-auto scrollbar-none">
       <span className="hidden sm:flex items-center px-3 sub-header shrink-0 border-r border-term-border">
         QUICK
       </span>

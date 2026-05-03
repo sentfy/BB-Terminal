@@ -131,6 +131,22 @@ export function sigDividend(yieldDec?: number, payout?: number): Signal {
   return neutral(yLabel);
 }
 
+export function sigInsiderActivity(buys: number, sells: number, netValue: number): Signal {
+  if (buys === 0 && sells === 0) return na("No insider trades (90d)");
+  const detail = `${buys} buys · ${sells} sells`;
+  if (buys > sells && netValue > 0) return bull("Net insider buying", detail);
+  if (sells > buys && netValue < 0) return bear("Net insider selling", detail);
+  return neutral("Mixed insider activity", detail);
+}
+
+export function sigCongressActivity(buys: number, sells: number): Signal {
+  if (buys === 0 && sells === 0) return na("No congressional trades");
+  const detail = `${buys} buys · ${sells} sells`;
+  if (buys > sells) return bull("Congress net buying", detail);
+  if (sells > buys) return bear("Congress net selling", detail);
+  return neutral("Mixed congress activity", detail);
+}
+
 export interface ScoreTally {
   bull: number;
   bear: number;

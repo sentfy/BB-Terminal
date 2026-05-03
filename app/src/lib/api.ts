@@ -1,4 +1,10 @@
+import { useSettings } from "@/store/settingsStore";
+
 const BASE = "/api/v1";
+
+function dp() {
+  return useSettings.getState().activeProvider;
+}
 
 export class ApiError extends Error {
   constructor(public status: number, message: string, public needsKey?: string) {
@@ -36,6 +42,7 @@ export interface Quote {
   bid?: number; ask?: number; bid_size?: number; ask_size?: number;
   volume?: number; volume_average?: number; year_high?: number; year_low?: number;
   ma_50d?: number; ma_200d?: number; currency?: string;
+  change_percent?: number; change?: number;
 }
 export interface Candle { date: string; open: number; high: number; low: number; close: number; volume: number; }
 export interface NewsItem { id: string; date: string; title: string; url: string; source?: string; summary?: string; symbol?: string; }
@@ -87,57 +94,62 @@ export interface TreasuryRow {
   year_1?: number; year_2?: number; year_3?: number; year_5?: number; year_7?: number;
   year_10?: number; year_20?: number; year_30?: number;
 }
+export interface EarningsEvent {
+  symbol: string; name?: string; report_date?: string;
+  fiscal_quarter?: string; eps_estimate?: number; eps_actual?: number;
+  revenue_estimate?: number; revenue_actual?: number;
+}
 
 // Fetchers
 export const fetchQuote = (s: string) =>
-  get<Quote[] | Quote>("/equity/price/quote", { symbol: s, provider: "yfinance" })
+  get<Quote[] | Quote>("/equity/price/quote", { symbol: s, provider: dp() })
     .then((r) => (Array.isArray(r) ? r[0] : r));
 
 export const fetchHistorical = (s: string, o: { interval?: string; start_date?: string } = {}) => {
   const start = o.start_date ?? new Date(Date.now() - 365 * 864e5).toISOString().slice(0, 10);
   return get<Candle[]>("/equity/price/historical", {
-    symbol: s, provider: "yfinance", interval: o.interval ?? "1d", start_date: start,
+    symbol: s, provider: dp(), interval: o.interval ?? "1d", start_date: start,
   });
 };
 
 export const fetchNewsCompany = (s: string, limit = 30) =>
-  get<NewsItem[]>("/news/company", { symbol: s, provider: "yfinance", limit });
+  get<NewsItem[]>("/news/company", { symbol: s, provider: dp(), limit });
 
 export const fetchProfile = (s: string) =>
-  get<Profile[] | Profile>("/equity/profile", { symbol: s, provider: "yfinance" })
+  get<Profile[] | Profile>("/equity/profile", { symbol: s, provider: dp() })
     .then((r) => (Array.isArray(r) ? r[0] : r));
 
 export const fetchIncome = (s: string) =>
   get<IncomeRow[]>("/equity/fundamental/income", {
-    symbol: s, provider: "yfinance", period: "annual", limit: 5,
+    symbol: s, provider: dp(), period: "annual", limit: 5,
   });
 
 export const fetchMetrics = (s: string) =>
-  get<Metrics[] | Metrics>("/equity/fundamental/metrics", { symbol: s, provider: "yfinance" })
+  get<Metrics[] | Metrics>("/equity/fundamental/metrics", { symbol: s, provider: dp() })
     .then((r) => (Array.isArray(r) ? r[0] : r));
 
 export const fetchDividends = (s: string) =>
-  get<Dividend[]>("/equity/fundamental/dividends", { symbol: s, provider: "yfinance" });
+  get<Dividend[]>("/equity/fundamental/dividends", { symbol: s, provider: dp() });
 
 export const fetchConsensus = (s: string) =>
   get<ConsensusEstimate[] | ConsensusEstimate>("/equity/estimates/consensus", {
-    symbol: s, provider: "yfinance",
+    symbol: s, provider: dp(),
   }).then((r) => (Array.isArray(r) ? r[0] : r));
 
 export const fetchGainers = () =>
-  get<Mover[]>("/equity/discovery/gainers", { provider: "yfinance" });
+  get<Mover[]>("/equity/discovery/gainers", { provider: dp() });
 export const fetchLosers = () =>
-  get<Mover[]>("/equity/discovery/losers", { provider: "yfinance" });
+  get<Mover[]>("/equity/discovery/losers", { provider: dp() });
 export const fetchMostActive = () =>
-  get<Mover[]>("/equity/discovery/active", { provider: "yfinance" });
+  get<Mover[]>("/equity/discovery/active", { provider: dp() });
 
 export const fetchOptions = (s: string) =>
-  get<OptionsRow[]>("/derivatives/options/chains", { symbol: s, provider: "yfinance" });
+  get<OptionsRow[]>("/derivatives/options/chains", { symbol: s, provider: dp() });
 
 export const fetchIndexHistorical = (s: string, days = 30) => {
   const start = new Date(Date.now() - days * 864e5).toISOString().slice(0, 10);
   return get<Candle[]>("/index/price/historical", {
-    symbol: s, provider: "yfinance", interval: "1d", start_date: start,
+    symbol: s, provider: dp(), interval: "1d", start_date: start,
   });
 };
 
@@ -151,16 +163,21 @@ export const fetchTreasuryRates = (days = 30) => {
 export const fetchFxHistorical = (pair: string, days = 30) => {
   const start = new Date(Date.now() - days * 864e5).toISOString().slice(0, 10);
   return get<Candle[]>("/currency/price/historical", {
-    symbol: pair, provider: "yfinance", interval: "1d", start_date: start,
+    symbol: pair, provider: dp(), interval: "1d", start_date: start,
   });
 };
 
 export const fetchCryptoHistorical = (sym: string, days = 30) => {
   const start = new Date(Date.now() - days * 864e5).toISOString().slice(0, 10);
   return get<Candle[]>("/crypto/price/historical", {
-    symbol: sym, provider: "yfinance", interval: "1d", start_date: start,
+    symbol: sym, provider: dp(), interval: "1d", start_date: start,
   });
 };
 
 export const searchSymbols = (q: string, limit = 8) =>
   get<SearchResult[]>("/equity/search", { query: q, provider: "sec", limit, is_symbol: false });
+
+export const fetchEarningsCalendar = (startDate?: string, endDate?: string) =>
+  get<EarningsEvent[]>("/equity/discovery/calendar", {
+    provider: dp(), start_date: startDate, end_date: endDate,
+  }).catch(() => [] as EarningsEvent[]);

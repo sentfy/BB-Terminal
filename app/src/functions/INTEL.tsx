@@ -4,18 +4,30 @@ import {
   fetchQuote, fetchProfile, fetchMetrics, fetchConsensus,
   fetchNewsCompany, fetchIncome, searchSymbols,
 } from "@/lib/api";
+import {
+  fetchInsiderTrading, fetchInstitutionalHolders, fetchSharesFloat,
+  fetchSenateTrades, fetchHouseTrades,
+  hasFmpKey, type PoliticalTrade,
+} from "@/lib/fmp";
 import { fmtPrice, fmtPct, fmtVolume, fmtTime, fmtPctFromDecimal } from "@/lib/format";
 import {
   sigMA, sig52w, sigPE, sigFwdPE, sigEvEbitda, sigMargin, sigGrowth,
-  sigAnalystUpside, sigAnalystRec, sigDebtEquity, sigDividend, tally,
+  sigAnalystUpside, sigAnalystRec, sigDebtEquity, sigDividend,
+  sigInsiderActivity, sigCongressActivity, tally,
   levelDot, type Signal,
 } from "@/lib/signals";
 import { useWorkspace } from "@/store/workspaceStore";
 import { cn } from "@/lib/cn";
 
+function isBuy(txType: string): boolean {
+  return txType.toLowerCase().startsWith("p") || txType.toLowerCase().includes("purchase");
+}
+
 export function INTEL({ symbol }: { symbol: string }) {
   const openTab = useWorkspace((s) => s.openTab);
+  const hasFmp = hasFmpKey();
 
+  // ── Core queries ───────────────────────────────────────────────────────
   const [quoteQ, profileQ, metricsQ, consensusQ, newsQ, incomeQ] = useQueries({
     queries: [
       { queryKey: ["quote", symbol], queryFn: () => fetchQuote(symbol), refetchInterval: 5000 },
@@ -25,6 +37,41 @@ export function INTEL({ symbol }: { symbol: string }) {
       { queryKey: ["news", symbol], queryFn: () => fetchNewsCompany(symbol, 5) },
       { queryKey: ["income", symbol], queryFn: () => fetchIncome(symbol) },
     ],
+  });
+
+  // ── FMP-enhanced queries (non-blocking) ────────────────────────────────
+  const { data: insiderTrades = [] } = useQuery({
+    queryKey: ["insider-trading", symbol],
+    queryFn: () => fetchInsiderTrading(symbol, 20),
+    staleTime: 120_000,
+    enabled: hasFmp,
+  });
+
+  const { data: holders = [] } = useQuery({
+    queryKey: ["inst-holders", symbol],
+    queryFn: () => fetchInstitutionalHolders(symbol),
+    staleTime: 300_000,
+    enabled: hasFmp,
+  });
+
+  const { data: floatData } = useQuery({
+    queryKey: ["shares-float", symbol],
+    queryFn: () => fetchSharesFloat(symbol),
+    staleTime: 300_000,
+    enabled: hasFmp,
+  });
+
+  const { data: politicalTrades = [] } = useQuery({
+    queryKey: ["political-trades-intel", symbol],
+    queryFn: async () => {
+      const [senate, house] = await Promise.all([
+        fetchSenateTrades(symbol),
+        fetchHouseTrades(symbol),
+      ]);
+      return [...senate, ...house].sort((a, b) => b.date.localeCompare(a.date));
+    },
+    staleTime: 300_000,
+    enabled: hasFmp,
   });
 
   const q = quoteQ.data;
@@ -43,6 +90,35 @@ export function INTEL({ symbol }: { symbol: string }) {
     const sorted = [...income].sort((a, b) => (a.period_ending > b.period_ending ? 1 : -1));
     return sorted.map((r) => r.total_revenue ?? 0);
   }, [income]);
+
+  // Insider summary (90 days)
+  const insiderSummary = useMemo(() => {
+    const threeMonthsAgo = Date.now() - 90 * 864e5;
+    const recent = insiderTrades.filter((t) => new Date(t.transactionDate).getTime() > threeMonthsAgo);
+    let buys = 0, sells = 0, buyValue = 0, sellValue = 0;
+    for (const t of recent) {
+      const val = t.securitiesTransacted * (t.price ?? 0);
+      if (isBuy(t.transactionType)) { buys++; buyValue += val; }
+      else { sells++; sellValue += val; }
+    }
+    return { buys, sells, buyValue, sellValue, net: buyValue - sellValue };
+  }, [insiderTrades]);
+
+  // Top 5 holders
+  const topHolders = useMemo(
+    () => [...holders].sort((a, b) => b.shares - a.shares).slice(0, 5),
+    [holders],
+  );
+
+  // Congressional buy/sell counts
+  const congressSummary = useMemo(() => {
+    let buys = 0, sells = 0;
+    for (const tr of politicalTrades) {
+      if (isBuy(tr.type)) buys++;
+      else sells++;
+    }
+    return { buys, sells };
+  }, [politicalTrades]);
 
   // Compute signals
   const technicals: Signal[] = [
@@ -69,6 +145,10 @@ export function INTEL({ symbol }: { symbol: string }) {
   const shareholder: Signal[] = [
     sigDividend(m?.dividend_yield, m?.payout_ratio),
   ];
+  const activity: Signal[] = hasFmp ? [
+    sigInsiderActivity(insiderSummary.buys, insiderSummary.sells, insiderSummary.net),
+    sigCongressActivity(congressSummary.buys, congressSummary.sells),
+  ] : [];
 
   const allSignals = [...technicals, ...valuation, ...fundamentals, ...analyst, ...shareholder];
   const t = tally(allSignals);
@@ -161,6 +241,12 @@ export function INTEL({ symbol }: { symbol: string }) {
           <KV k="EV" v={fmtVolume(m?.enterprise_value)} />
           <KV k="SHARES" v={fmtVolume(p?.shares_outstanding)} />
           <KV k="BETA" v={p?.beta != null ? p.beta.toFixed(2) : "—"} />
+          {floatData && (
+            <>
+              <KV k="FREE FLOAT" v={floatData.freeFloat != null ? `${floatData.freeFloat.toFixed(1)}%` : "—"} />
+              <KV k="FLOAT" v={fmtVolume(floatData.floatShares)} />
+            </>
+          )}
           <div className="col-span-2 mt-2">
             <div className="sub-header">REVENUE TREND (ANNUAL)</div>
             {revSeries.length > 1 && (
@@ -177,6 +263,125 @@ export function INTEL({ symbol }: { symbol: string }) {
           </div>
         </div>
       </div>
+
+      {/* FMP-enhanced row: Insider + Holders + Congressional */}
+      {hasFmp && (
+        <>
+          <div className="panel">
+            <div className="panel-header">
+              <span>INSIDER ACTIVITY</span>
+              <span className="sub-header normal-case tracking-normal font-normal">90 days</span>
+            </div>
+            <div className="p-3 flex flex-col gap-2 text-[11px]">
+              <SignalRow s={activity[0]} />
+              {insiderTrades.length > 0 ? (
+                <>
+                  <div className="flex items-center gap-4">
+                    <span className="up num font-bold">{insiderSummary.buys} buys</span>
+                    <span className="text-term-muted num">({fmtVolume(insiderSummary.buyValue)})</span>
+                    <span className="down num font-bold">{insiderSummary.sells} sells</span>
+                    <span className="text-term-muted num">({fmtVolume(insiderSummary.sellValue)})</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-term-muted">NET:</span>
+                    <span className={cn("num font-bold", insiderSummary.net >= 0 ? "up" : "down")}>
+                      {insiderSummary.net >= 0 ? "+" : ""}{fmtVolume(Math.abs(insiderSummary.net))}
+                    </span>
+                  </div>
+                  <div className="mt-1 pt-2 border-t border-term-borderSoft flex flex-col gap-1">
+                    <div className="sub-header mb-1">RECENT TRADES</div>
+                    {insiderTrades.slice(0, 4).map((tr, i) => {
+                      const buy = isBuy(tr.transactionType);
+                      const val = tr.securitiesTransacted * (tr.price ?? 0);
+                      return (
+                        <div key={i} className="flex items-center gap-2">
+                          <span className="num text-term-muted w-[70px] shrink-0">{tr.transactionDate.slice(0, 10)}</span>
+                          <span className="truncate flex-1 text-term-heading">{tr.reportingName}</span>
+                          <span className={cn("font-semibold uppercase w-8 text-right", buy ? "up" : "down")}>
+                            {buy ? "BUY" : "SELL"}
+                          </span>
+                          <span className="num text-term-muted w-14 text-right">{val > 0 ? fmtVolume(val) : "—"}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              ) : (
+                <div className="text-term-muted">No recent insider trades.</div>
+              )}
+              <button onClick={() => openTab("INSD" as never, symbol)}
+                className="mt-1 text-[10px] text-term-muted hover:text-term-amber uppercase tracking-wider self-start">
+                VIEW ALL INSIDER TRADES →
+              </button>
+            </div>
+          </div>
+
+          <div className="panel">
+            <div className="panel-header">
+              <span>TOP HOLDERS</span>
+              <span className="sub-header normal-case tracking-normal font-normal">{holders.length} institutional</span>
+            </div>
+            <div className="p-3 flex flex-col gap-1 text-[11px]">
+              {topHolders.length > 0 ? (
+                <>
+                  {topHolders.map((h, i) => (
+                    <div key={i} className="flex items-center gap-2">
+                      <span className="num text-term-muted w-4">{i + 1}.</span>
+                      <span className="truncate flex-1 text-term-heading">{h.holder}</span>
+                      <span className="num text-term-muted">{fmtVolume(h.shares)}</span>
+                      {h.change !== 0 && (
+                        <span className={cn("num text-[10px]", h.change > 0 ? "up" : "down")}>
+                          {h.change > 0 ? "+" : ""}{fmtVolume(h.change)}
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </>
+              ) : (
+                <div className="text-term-muted">No institutional holder data.</div>
+              )}
+              <button onClick={() => openTab("OWN" as never, symbol)}
+                className="mt-2 text-[10px] text-term-muted hover:text-term-amber uppercase tracking-wider self-start">
+                VIEW ALL HOLDERS →
+              </button>
+            </div>
+          </div>
+
+          <div className="panel">
+            <div className="panel-header">
+              <span>CONGRESSIONAL</span>
+              <span className="sub-header normal-case tracking-normal font-normal">{politicalTrades.length} trades</span>
+            </div>
+            <div className="p-3 flex flex-col gap-1 text-[11px]">
+              <div className="mb-1"><SignalRow s={activity[1]} /></div>
+              {politicalTrades.length > 0 ? (
+                <>
+                  {politicalTrades.slice(0, 5).map((tr, i) => {
+                    const buy = isBuy(tr.type);
+                    return (
+                      <div key={i} className="flex items-center gap-2">
+                        <span className="num text-term-muted w-[70px] shrink-0">{tr.date.slice(0, 10)}</span>
+                        <span className="truncate flex-1 text-term-heading">{tr.name}</span>
+                        <span className={cn("text-[10px] uppercase",
+                          tr.chamber === "Senate" ? "text-term-amber" : "text-term-muted")}>{tr.chamber.slice(0, 3)}</span>
+                        <span className={cn("font-semibold uppercase w-8 text-right", buy ? "up" : "down")}>
+                          {buy ? "BUY" : "SELL"}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </>
+              ) : (
+                <div className="text-term-muted">No congressional trades found for {symbol}.</div>
+              )}
+              <button onClick={() => openTab("INSD" as never, symbol)}
+                className="mt-2 text-[10px] text-term-muted hover:text-term-amber uppercase tracking-wider self-start">
+                VIEW ALL POLITICAL TRADES →
+              </button>
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Bottom row: business summary + news */}
       <div className="col-span-2 panel">
@@ -208,6 +413,8 @@ export function INTEL({ symbol }: { symbol: string }) {
           { c: "KEY", label: "All Ratios" }, { c: "FA", label: "Financials" },
           { c: "DVD", label: "Dividends" }, { c: "EE", label: "Analyst Detail" },
           { c: "NI", label: "All News" }, { c: "OMON", label: "Options" },
+          { c: "OWN", label: "Ownership" }, { c: "INSD", label: "Insider" },
+          { c: "SENT", label: "Sentiment" },
         ].map((x) => (
           <button key={x.c} onClick={() => openTab(x.c as never, symbol)}
             className="px-2 py-0.5 border border-term-border hover:border-term-amber hover:text-term-amber text-term-muted tracking-wider">

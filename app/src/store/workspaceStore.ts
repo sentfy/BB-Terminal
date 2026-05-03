@@ -14,6 +14,8 @@ interface WorkspaceState {
   activeSymbol: string | null;
   openTab: (code: FunctionCode, symbol?: string) => void;
   closeTab: (id: string) => void;
+  closeAllTabs: () => void;
+  moveTab: (fromIdx: number, toIdx: number) => void;
   setActiveTab: (id: string) => void;
   setActiveSymbol: (s: string) => void;
 }
@@ -49,16 +51,29 @@ export const useWorkspace = create<WorkspaceState>()(
           : null;
         set({ tabs: remaining, activeTabId: next });
         if (remaining.length === 0) {
-          // always keep Command Center open as a fallback
           set({
             tabs: [{ id: "CC:_", code: "CC" }],
             activeTabId: "CC:_",
           });
         }
       },
+      closeAllTabs: () => {
+        set({
+          tabs: [{ id: "CC:_", code: "CC" }],
+          activeTabId: "CC:_",
+        });
+      },
+      moveTab: (fromIdx, toIdx) => {
+        const { tabs } = get();
+        if (fromIdx < 0 || fromIdx >= tabs.length || toIdx < 0 || toIdx >= tabs.length || fromIdx === toIdx) return;
+        const next = [...tabs];
+        const [moved] = next.splice(fromIdx, 1);
+        next.splice(toIdx, 0, moved);
+        set({ tabs: next });
+      },
       setActiveTab: (id) => set({ activeTabId: id }),
       setActiveSymbol: (s) => set({ activeSymbol: s.toUpperCase() }),
     }),
-    { name: "bbterminal-workspace" }
+    { name: "sentfy-workspace" }
   )
 );

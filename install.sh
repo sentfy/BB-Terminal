@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
-# BBterminal — one-line installer
+# Sentfy-Terminal — one-line installer
 #
 # Usage:
 #   curl -fsSL https://raw.githubusercontent.com/vaughanf1/BB-Terminal/main/install.sh | bash
 #
 # Environment overrides:
-#   INSTALL_DIR=~/somewhere    # where to clone (default: ~/BB-Terminal)
+#   INSTALL_DIR=~/somewhere    # where to clone (default: ~/Sentfy-Terminal)
 #   SKIP_LAUNCH=1              # don't auto-launch after install
 
 set -euo pipefail
 
 REPO_URL="https://github.com/vaughanf1/BB-Terminal.git"
-INSTALL_DIR="${INSTALL_DIR:-$HOME/BB-Terminal}"
+INSTALL_DIR="${INSTALL_DIR:-$HOME/Sentfy-Terminal}"
 SKIP_LAUNCH="${SKIP_LAUNCH:-}"
 
 AMBER='\033[33m'; GREEN='\033[32m'; RED='\033[31m'; DIM='\033[2m'; BOLD='\033[1m'; RST='\033[0m'
@@ -21,13 +21,13 @@ fail() { printf "${RED}✗ %s${RST}\n" "$*" >&2; exit 1; }
 
 cat <<'BANNER'
 
-  ██████  ██████      ████████ ███████ ██████  ███    ███ ██ ███    ██  █████  ██
-  ██   ██ ██   ██        ██    ██      ██   ██ ████  ████ ██ ████   ██ ██   ██ ██
-  ██████  ██████         ██    █████   ██████  ██ ████ ██ ██ ██ ██  ██ ███████ ██
-  ██   ██ ██   ██        ██    ██      ██   ██ ██  ██  ██ ██ ██  ██ ██ ██   ██ ██
-  ██████  ██████         ██    ███████ ██   ██ ██      ██ ██ ██   ████ ██   ██ ███████
+  ███████ ███████ ███    ██ ████████ ███████ ██    ██
+  ██      ██      ████   ██    ██    ██       ██  ██
+  ███████ █████   ██ ██  ██    ██    █████     ████
+       ██ ██      ██  ██ ██    ██    ██         ██
+  ███████ ███████ ██   ████    ██    ██         ██
 
-  Bloomberg-style intelligence dashboard — powered by OpenBB
+  Sentfy-Terminal — Intelligence dashboard powered by OpenBB
   https://github.com/vaughanf1/BB-Terminal
 
 BANNER
@@ -72,7 +72,7 @@ fi
 ok "Node    $(node --version)"
 
 # ── clone ────────────────────────────────────────────────────
-step "Cloning BB-Terminal to $INSTALL_DIR"
+step "Cloning Sentfy-Terminal to $INSTALL_DIR"
 
 if [ -e "$INSTALL_DIR" ]; then
   cat <<EOF >&2
@@ -98,13 +98,13 @@ cd "$INSTALL_DIR"
 
 # ── auto-launch ──────────────────────────────────────────────
 if [ -z "$SKIP_LAUNCH" ]; then
-  step "Launching BBterminal"
+  step "Launching Sentfy-Terminal"
   ./start.sh
 else
   cat <<EOF
 
 ${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RST}
-${BOLD}${AMBER}  BBterminal installed.${RST}
+${BOLD}${AMBER}  Sentfy-Terminal installed.${RST}
 
   Launch it now:
     ${AMBER}cd $INSTALL_DIR && ./start.sh${RST}
